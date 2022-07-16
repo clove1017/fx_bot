@@ -55,11 +55,11 @@ def form_prediction(open_data,close_data,high_data,low_data,td_days,device):
 
     #create inputs and outputs matrices
     num_prec=5
-    input_data=np.zeros((int(4*num_prec),1,len(open_data)-num_prec-1)) #exclude the final point cuz that will be used for pred
-    output_data=np.zeros((1,1,len(open_data)-num_prec-1))
-    min_arr=np.zeros(len(open_data)-num_prec-1)
-    max_arr=np.zeros(len(open_data)-num_prec-1)
-    for i in range(num_prec,len(open_data)-1):
+    input_data=np.zeros((int(4*num_prec),1,len(open_data)-num_prec)) #exclude the final point cuz that will be used for pred
+    output_data=np.zeros((1,1,len(open_data)-num_prec))
+    min_arr=np.zeros(len(open_data)-num_prec)
+    max_arr=np.zeros(len(open_data)-num_prec)
+    for i in range(num_prec,len(open_data)):
         td=td_days[i-num_prec:i]-td_days[i] #number of days before present
         td=1/td
         td=td/(max(td))
@@ -78,7 +78,7 @@ def form_prediction(open_data,close_data,high_data,low_data,td_days,device):
 
     input_data=(input_data-min(min_arr))/(max(max_arr)-min(min_arr)) #data standardization
     output_data=(output_data-min(min_arr))/(max(max_arr)-min(min_arr))
-    
+
     #Apply custom dataset class to formatted data mat
 
     fx_dataset=fx_data_set(input_data,output_data,num_prec)
@@ -119,8 +119,8 @@ def form_prediction(open_data,close_data,high_data,low_data,td_days,device):
             pred_arr[i]=pred_np
             y_np=y.cpu().detach().numpy() 
             y_arr[i]=y_np
-        pred_delt=pred_arr-(close_data[num_prec-1:len(close_data)-2]-min(min_arr))/(max(max_arr)-min(min_arr)) 
-        act_delt=y_arr-(close_data[num_prec-1:len(close_data)-2]-min(min_arr))/(max(max_arr)-min(min_arr))
+        pred_delt=pred_arr-(close_data[num_prec-1:len(close_data)-1]-min(min_arr))/(max(max_arr)-min(min_arr)) 
+        act_delt=y_arr-(close_data[num_prec-1:len(close_data)-1]-min(min_arr))/(max(max_arr)-min(min_arr))
         perc_correct=0
         for i in range(0,len(pred_delt)):
             if pred_delt[i]*act_delt[i]>0:
@@ -146,4 +146,17 @@ def form_prediction(open_data,close_data,high_data,low_data,td_days,device):
     max_trade=100
     trade_size=max_trade*(1.5-(1/(1+np.exp(-1*main_err))))*(1-p_val)*(perc_correct/100)
     
-    return trade_size
+    pred_set=np.zeros((1,int(4*num_prec),1),dtype='float32')
+    pred_set[0,0:num_prec,0]=(open_data[len(open_data)-num_prec:len(open_data)]-min(min_arr))/(max(max_arr)-min(min_arr))
+    pred_set[0,num_prec:int(2*num_prec),0]=(close_data[len(open_data)-num_prec:len(open_data)]-min(min_arr))/(max(max_arr)-min(min_arr))
+    pred_set[0,int(2*num_prec):int(3*num_prec),0]=(high_data[len(open_data)-num_prec:len(open_data)]-min(min_arr))/(max(max_arr)-min(min_arr))
+    pred_set[0,int(3*num_prec):int(4*num_prec),0]=(low_data[len(open_data)-num_prec:len(open_data)]-min(min_arr))/(max(max_arr)-min(min_arr))
+    pred_set=torch.from_numpy(pred_set)
+    prediction_val=model(pred_set)
+    final_actual_val=(close_data[-1]-min(min_arr))/(max(max_arr)-min(min_arr))
+    if prediction_val-final_actual_val<0:
+        direction='short'
+    else:
+        direction='long'
+    
+    return trade_size,direction
